@@ -125,13 +125,14 @@ export default defineConfig({
    * @name openAPI 插件的配置
    * @description 基于 openapi 的规范生成serve 和mock，能减少很多样板代码
    * @doc https://pro.ant.design/zh-cn/docs/openapi/
+   * 根据后端文档自动生成前端增删改查的工具
    */
   openAPI: [
     {
       requestLibPath: "import { request } from '@umijs/max'",
       // 或者使用在线的版本
-      schemaPath: "http://localhost:8080/api/v2/api-docs",
-      projectName: 'yubi',
+      schemaPath: "http://localhost:8101/api/v2/api-docs",
+      projectName: 'hwbi',
       // schemaPath: join(__dirname, 'oneapi.json'),
       mock: false,
     },

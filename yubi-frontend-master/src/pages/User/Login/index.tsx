@@ -1,6 +1,6 @@
 import Footer from '@/components/Footer';
-import { listChartByPageUsingPOST } from '@/services/yubi/chartController';
-import { getLoginUserUsingGET, userLoginUsingPOST } from '@/services/yubi/userController';
+import { listChartByPageUsingPOST } from '@/services/hwbi/chartController';
+import { getLoginUserUsingGET, userLoginUsingPOST } from '@/services/hwbi/userController';
 import { Link } from '@@/exports';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { LoginForm, ProFormText } from '@ant-design/pro-components';
