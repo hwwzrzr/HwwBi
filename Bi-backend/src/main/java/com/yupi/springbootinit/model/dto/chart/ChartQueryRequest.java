@@ -19,7 +19,8 @@ import java.util.List;
  */
 @EqualsAndHashCode(callSuper = true)
 @Data
-public class ChartQueryRequest extends PageRequest implements Serializable {
+public class
+ChartQueryRequest extends PageRequest implements Serializable {
 
     /**
      * id
