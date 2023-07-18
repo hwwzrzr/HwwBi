@@ -27,10 +27,10 @@ public class AiManager {
      * @param message
      * @return
      */
-    public String doChat(Long mdoelId, String message){
+    public String doChat(Long modeled, String message){
         // 构造请求
         DevChatRequest devChatRequest = new DevChatRequest();
-        devChatRequest.setModelId(mdoelId);
+        devChatRequest.setModelId(modeled);
         devChatRequest.setMessage(message);
         BaseResponse<DevChatResponse> response = client.doChat(devChatRequest);
         if(response == null){
