@@ -30,8 +30,14 @@ spring:
     database: 1
     host: 192.168.176.131
     port: 6379
-    timeout: 5000
+    timeout:  5000
     password: 123456
+  #RabbitMQ
+  rabbitmq:
+    host: localhost
+    username: guest
+    password: guest
+    port: 5672
   # Elasticsearch 配置
   # todo 需替换配置，然后取消注释
 #  elasticsearch:

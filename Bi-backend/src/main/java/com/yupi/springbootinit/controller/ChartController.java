@@ -1,39 +1,33 @@
 package com.yupi.springbootinit.controller;
 import java.util.Arrays;
-import java.util.Date;
 
 import cn.hutool.core.io.FileUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.google.gson.Gson;
 import com.yupi.springbootinit.annotation.AuthCheck;
+import com.yupi.springbootinit.blzMQ.BiMessageConsumer;
+import com.yupi.springbootinit.blzMQ.BiMessageProducer;
 import com.yupi.springbootinit.common.BaseResponse;
 import com.yupi.springbootinit.common.DeleteRequest;
 import com.yupi.springbootinit.common.ErrorCode;
 import com.yupi.springbootinit.common.ResultUtils;
 import com.yupi.springbootinit.constant.CommonConstant;
-import com.yupi.springbootinit.constant.FileConstant;
 import com.yupi.springbootinit.constant.UserConstant;
 import com.yupi.springbootinit.exception.BusinessException;
 import com.yupi.springbootinit.exception.ThrowUtils;
 import com.yupi.springbootinit.manager.AiManager;
 import com.yupi.springbootinit.manager.RedisLimiterManager;
 import com.yupi.springbootinit.model.dto.chart.*;
-import com.yupi.springbootinit.model.dto.file.UploadFileRequest;
-import com.yupi.springbootinit.model.dto.post.PostQueryRequest;
 import com.yupi.springbootinit.model.entity.Chart;
-import com.yupi.springbootinit.model.entity.Post;
 import com.yupi.springbootinit.model.entity.User;
-import com.yupi.springbootinit.model.enums.FileUploadBizEnum;
 import com.yupi.springbootinit.model.vo.BiResponse;
 import com.yupi.springbootinit.service.ChartService;
 import com.yupi.springbootinit.service.UserService;
 import com.yupi.springbootinit.utils.ExcelUtils;
 import com.yupi.springbootinit.utils.SqlUtils;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ObjectUtils;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
@@ -41,7 +35,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
-import java.io.File;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -71,6 +64,12 @@ public class ChartController {
 
     @Resource
     private ThreadPoolExecutor threadPoolExecutor;
+
+    @Resource
+    private BiMessageProducer biMessageProducer;
+
+    @Resource
+    private BiMessageConsumer biMessageConsumer;
 
     private final static Gson GSON = new Gson();
 
@@ -465,6 +464,80 @@ public class ChartController {
 
     }
 
+
+    /**
+     * 异步消息队列
+     * 用户上传请求，通过ai智能分析得到返回结果
+     *
+     * @param multipartFile
+     * @param genChartByAiRequest
+     * @param request
+     * @return
+     */
+    @PostMapping("/gen/async/mq")
+    public BaseResponse<BiResponse> genChartByASycMq(@RequestPart("file") MultipartFile multipartFile,
+                                                     GenChartByAiRequest genChartByAiRequest, HttpServletRequest request) {
+        String name = genChartByAiRequest.getName();
+        String goal = genChartByAiRequest.getGoal();
+        String chartType = genChartByAiRequest.getChartType();
+        //校验
+        ThrowUtils.throwIf(StringUtils.isBlank(goal), ErrorCode.PARAMS_ERROR, "目标为空");
+        ThrowUtils.throwIf(StringUtils.isBlank(name) && name.length() > 100,
+                ErrorCode.PARAMS_ERROR, "名称过长");
+        //校验文件大小、后缀，防止用户上传超大的文件或者恶意文件
+        /**
+         * 校验文件
+         *
+         * 拿到用户请求的文件
+         * 读取原始文件大小
+         */
+        long fileSize = multipartFile.getSize();
+        String originalFilename = multipartFile.getOriginalFilename();
+        //文件的大小为2M
+        final long FILE_SIZE = 2*1024*1024;
+        ThrowUtils.throwIf(fileSize > FILE_SIZE, ErrorCode.PARAMS_ERROR, "文件超过2M");
+        /**
+         * 校验文件后缀
+         */
+        String suffix = FileUtil.getSuffix(originalFilename);
+        //定义合法后缀
+        final List<String> validFileSuffixList = Arrays.asList("xlsx", "xls");
+        ThrowUtils.throwIf(!validFileSuffixList.contains(suffix),ErrorCode.PARAMS_ERROR, "非法文件后缀");
+        //当前必须登录才能使用该功能
+        User loginUser = userService.getLoginUser(request);
+        /**
+         * 限流
+         */
+        //限流判断，每个用户一个限流器
+        //对用户id进行限流,每个用户每秒只能跑两次
+        redisLimiterManager.doRateLimit("genCharByAi_userId_" + loginUser.getId());
+
+
+        //读取用户上传的 excel文件,需要进行一个处理
+        String csv = ExcelUtils.excelToCsv(multipartFile);
+        //将图表先保存到数据库,目的是为了记录用户查询的情况
+        Chart chart = new Chart();
+        chart.setName(name);
+        chart.setGoal(goal);
+        chart.setChartData(csv);
+        chart.setChartType(chartType);
+        chart.setUserId(loginUser.getId());
+        boolean save = chartService.save(chart);
+        ThrowUtils.throwIf(!save, ErrorCode.SYSTEM_ERROR, "信息保存失败");
+
+        /**
+         * 将用户请求ID发送到消息队列中
+         */
+        //将消息ID发到消息队列中
+        biMessageProducer.sendMessage(chart.getId().toString());
+
+        //封装BiResponse对象
+        BiResponse biResponse = new BiResponse();
+
+        biResponse.setChartId(chart.getId());
+        return ResultUtils.success(biResponse);
+
+    }
     //上面接口很多用到异常，直接定义一个工具类
     private void handleChartUpdateError(long chartId, String execMessage){
         Chart updateChartResult = new Chart();
